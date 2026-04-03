@@ -1,3 +1,9 @@
+def load_portfolio():
+    try:
+        df = pd.read_csv("portfolio.csv")
+        return df
+    except:
+        return pd.DataFrame(columns=["Stock","Entry","Qty","SL","Status"])
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
