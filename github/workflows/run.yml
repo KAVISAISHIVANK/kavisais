@@ -1,3 +1,69 @@
+Skip to content
+KAVISAISHIVANK
+kavisais
+Repository navigation
+Code
+Issues
+Pull requests
+Actions
+Projects
+Security and quality
+Insights
+Settings
+Files
+Go to file
+t
+github/workflows
+run.yml
+main.py
+requirements.txt
+signals.csv
+streamlit_app.py
+kavisais/github/workflows
+/
+run.yml
+in
+main
+
+Edit
+
+Preview
+Indent mode
+
+Spaces
+Indent size
+
+2
+Line wrap mode
+
+No wrap
+Editing run.yml file contents
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
 name: Run Trading Bot
 
 on:
@@ -23,3 +89,5 @@ jobs:
 
     - name: Run bot
       run: python main.py
+
+Use Control + Shift + m to toggle the tab key moving focus. Alternatively, use esc then tab to move to the next interactive element on the page.
