@@ -54,7 +54,8 @@ def get_signal(df):
 # MAIN EXECUTION
 # =========================
 signals_data = []
-
+portfolio = load_portfolio()
+holding_stocks = portfolio[portfolio["Status"] == "HOLD"]["Stock"].tolist()
 for stock in stocks:
     try:
         df = yf.download(stock, period="6mo", interval="1d", progress=False)
@@ -105,6 +106,17 @@ for stock in stocks:
         # Confidence score (simple momentum-based)
         momentum = (df['Close'].iloc[-1] / df['Close'].iloc[-20]) - 1
         confidence = round(min(max(momentum * 100, 50), 90), 2)
+        # Skip useless EXIT signals
+        if signal == "EXIT" and stock not in holding_stocks:
+            continue
+        
+        # Skip duplicate BUY signals
+        if signal == "BUY" and stock in holding_stocks:
+            continue
+            
+        if stock in holding_stocks and signal != "EXIT":
+            signal = "HOLD"
+            
         if signal is None:
             continue
         signals_data.append({
