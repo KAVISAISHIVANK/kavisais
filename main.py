@@ -73,27 +73,42 @@ for stock in stocks:
             continue
 
         # Calculate indicator
+        # Indicators
         df['20DMA'] = df['Close'].rolling(20).mean()
-
+        df['50DMA'] = df['Close'].rolling(50).mean()
+        
         latest = df.iloc[-1]
-
+        prev = df.iloc[-2]
+        
         close = float(latest['Close'])
         dma20 = float(latest['20DMA'])
-
-        if close > dma20:
-            signal = "BUY"
-        else:
+        dma50 = float(latest['50DMA'])
+        
+        # Strategy: Trend + Pullback + Breakout
+        signal = None
+        
+        if close > dma50:
+            if abs(close - dma20) / dma20 < 0.02:
+                if float(latest['High']) > float(prev['High']):
+                    signal = "BUY"
+        
+        elif close < dma20:
             signal = "EXIT"
-
+    
         price = close
-
+        # Confidence score (simple momentum-based)
+        momentum = (df['Close'].iloc[-1] / df['Close'].iloc[-20]) - 1
+        confidence = round(min(max(momentum * 100, 50), 90), 2)
+        if signal is None:
+            continue
         signals_data.append({
             "Date": datetime.now().strftime("%Y-%m-%d"),
             "Stock": stock,
             "Signal": signal,
-            "Price": round(price, 2)
+            "Price": round(price, 2),
+            "Confidence": confidence
         })
-
+        
         send_alert(f"{signal}: {stock} @ {round(price,2)}")
 
     except Exception as e:
@@ -110,5 +125,9 @@ if signals_data:
         df_signals = pd.concat([old, df_signals], ignore_index=True)
     except:
         pass
+    # Sort by confidence (highest first)
+    signals_data = sorted(signals_data, key=lambda x: x['Confidence'], reverse=True)
 
+    # Keep only top 5
+    signals_data = signals_data[:5]
     df_signals.to_csv("signals.csv", index=False)
