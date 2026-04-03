@@ -51,21 +51,42 @@ signals_data = []
 
 for stock in stocks:
     try:
-        df = yf.download(stock, period="6mo", interval="1d")
+        df = yf.download(stock, period="6mo", interval="1d", progress=False)
 
-        # Fix multi-index issue
+        # Check if data exists
+        if df is None or df.empty:
+            print(f"No data for {stock}")
+            continue
+
+        # Fix MultiIndex
         if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.droplevel(0)
+            df.columns = df.columns.get_level_values(0)
+
+        print(f"{stock} columns: {df.columns}")  # DEBUG
+
+        # Ensure Close column exists
+        if 'Close' not in df.columns:
+            print(f"'Close' missing for {stock}")
+            continue
 
         if len(df) < 50:
             continue
 
-        signal = get_signal(df)
+        # Calculate indicator
+        df['20DMA'] = df['Close'].rolling(20).mean()
 
         latest = df.iloc[-1]
-        price = float(latest['Close'])
 
-        # Store data
+        close = float(latest['Close'])
+        dma20 = float(latest['20DMA'])
+
+        if close > dma20:
+            signal = "BUY"
+        else:
+            signal = "EXIT"
+
+        price = close
+
         signals_data.append({
             "Date": datetime.now().strftime("%Y-%m-%d"),
             "Stock": stock,
@@ -73,12 +94,11 @@ for stock in stocks:
             "Price": round(price, 2)
         })
 
-        # Send Telegram alert
         send_alert(f"{signal}: {stock} @ {round(price,2)}")
 
     except Exception as e:
         print(f"Error processing {stock}: {e}")
-
+        
 # =========================
 # SAVE TO CSV
 # =========================
