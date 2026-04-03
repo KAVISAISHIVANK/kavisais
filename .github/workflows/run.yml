@@ -1,36 +1,40 @@
-name: Run Trading Bot
-
-permissions:
-  contents: write   # VERY IMPORTANT
+name: Run Trading System
 
 on:
   schedule:
-    - cron: '40 12 * * 1-5'
-  workflow_dispatch:
+    - cron: "0 10 * * 1-5"   # Runs at 3:30 PM IST (market close)
+  workflow_dispatch:         # Manual run button
 
 jobs:
-  run-bot:
+  run-script:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
 
-    - name: Install dependencies
-      run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
 
-    - name: Run bot
-      run: python main.py
+      - name: Run signal generation
+        run: python src/generate_signals.py
 
-    - name: Commit and push signals
-      run: |
-        git config user.name "github-actions"
-        git config user.email "actions@github.com"
-        git add signals.csv
-        git commit -m "Update signals" || echo "No changes"
-        git push
+      - name: Run trade execution
+        run: python src/execute_trades.py
+
+      - name: Create dashboard
+        run: python src/create_dashboard.py
+
+      - name: Commit updated files
+        run: |
+          git config --global user.name "bot"
+          git config --global user.email "bot@example.com"
+          git add data/*.csv output/*.xlsx
+          git commit -m "Auto update trading data" || echo "No changes"
+          git push
