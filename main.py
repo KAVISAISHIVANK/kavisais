@@ -1,38 +1,7 @@
-import yfinance as yf
 import pandas as pd
 from datetime import datetime
-import requests
 
-# --- TELEGRAM ---
-TOKEN = "YOUR_TOKEN"
-CHAT_ID = "YOUR_CHAT_ID"
-
-def send_alert(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
-
-# --- STRATEGY ---
-def get_signal(df):
-    df['20DMA'] = df['Close'].rolling(20).mean()
-    df['50DMA'] = df['Close'].rolling(50).mean()
-
-    latest = df.iloc[-1]
-    prev = df.iloc[-2]
-
-    if latest['Close'] > latest['50DMA']:
-        if abs(latest['Close'] - latest['20DMA']) < 0.02 * latest['20DMA']:
-            if latest['High'] > prev['High']:
-                return "BUY"
-
-    if latest['Close'] < latest['20DMA']:
-        return "EXIT"
-
-    return None
-
-# --- RUN ---
-stocks = ["RELIANCE.NS","ICICIBANK.NS","HDFCBANK.NS","INFY.NS","TCS.NS"]
-
-signals = []
+signals_data = []
 
 for stock in stocks:
     df = yf.download(stock, period="6mo", interval="1d")
@@ -43,10 +12,26 @@ for stock in stocks:
     signal = get_signal(df)
 
     if signal:
-        msg = f"{signal}: {stock}"
-        signals.append(msg)
+        price = df['Close'].iloc[-1]
 
-# --- ALERT ---
-if signals:
-    final_msg = "\n".join(signals)
-    send_alert(final_msg)
+        signals_data.append({
+            "Date": datetime.now().strftime("%Y-%m-%d"),
+            "Stock": stock,
+            "Signal": signal,
+            "Price": round(price, 2)
+        })
+
+        msg = f"{signal}: {stock} @ {price}"
+        send_alert(msg)
+
+# Save to CSV
+if signals_data:
+    df_signals = pd.DataFrame(signals_data)
+
+    try:
+        old = pd.read_csv("signals.csv")
+        df_signals = pd.concat([old, df_signals])
+    except:
+        pass
+
+    df_signals.to_csv("signals.csv", index=False)
