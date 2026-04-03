@@ -3,15 +3,18 @@ import pandas as pd
 
 st.title("📊 Swing Trading Dashboard")
 
-# Load signals
+# Signals
+st.subheader("📈 Latest Signals")
 try:
-    df = pd.read_csv("signals.csv")
-    
-    st.subheader("📈 Latest Signals")
-    st.dataframe(df.tail(10))
-
+    signals = pd.read_csv("signals.csv")
+    st.dataframe(signals.tail(10))
 except:
     st.write("No signals yet")
 
-# Portfolio placeholder
-st.subheader("💼 Portfolio (coming soon)")
+# Portfolio
+st.subheader("💼 Portfolio")
+try:
+    portfolio = pd.read_csv("portfolio.csv")
+    st.dataframe(portfolio)
+except:
+    st.write("No portfolio yet")
