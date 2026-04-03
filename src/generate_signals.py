@@ -12,10 +12,15 @@ for stock in stocks:
 
     if df.empty:
         continue
+    close = df["Close"]
+    # Fix: convert to 1D Series
+    if isinstance(close, pd.DataFrame):
+        close = close.squeeze()
+    df["RSI"] = RSIIndicator(close).rsi()
 
     df["RSI"] = RSIIndicator(df["Close"]).rsi()
     macd = MACD(df["Close"])
-    df["MACD"] = macd.macd()
+    macd = MACD(close)
     df["MACD_signal"] = macd.macd_signal()
 
     latest = df.iloc[-1]
