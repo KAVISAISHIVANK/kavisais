@@ -1,8 +1,10 @@
 yfinance
 pandas
+ta
 numpy
 gspread
 oauth2client
 scikit-learn
 requests
 streamlit
+openpyxl
