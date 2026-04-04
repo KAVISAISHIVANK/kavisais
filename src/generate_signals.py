@@ -11,7 +11,6 @@ import os
 # =========================
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-send_alert("✅ System is running")
 def send_alert(msg):
     if TOKEN is None or CHAT_ID is None:
         print("Telegram not configured")
@@ -21,7 +20,7 @@ def send_alert(msg):
         requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
     except Exception as e:
         print("Telegram error:", e)
-
+send_alert("✅ System is running")
 # =========================
 # STOCK LIST
 # =========================
