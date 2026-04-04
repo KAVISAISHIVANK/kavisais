@@ -1,0 +1,38 @@
+name: Backtest Nifty50 Strategy
+
+on:
+  workflow_dispatch:       # Manual trigger
+  schedule:
+    - cron: '0 6 * * 1-5'  # Mon-Fri, 6AM IST
+
+jobs:
+  run-backtest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.10
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set Telegram secrets
+        run: |
+          echo "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" >> $GITHUB_ENV
+          echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> $GITHUB_ENV
+
+      - name: Run Backtest
+        run: python src/backtest.py
+
+      - name: Upload backtest CSV
+        uses: actions/upload-artifact@v3
+        with:
+          name: backtest-results
+          path: data/backtest_results.csv
