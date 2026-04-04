@@ -50,3 +50,6 @@ jobs:
           git add data/*.csv output/*.xlsx
           git commit -m "Auto update trading data" || echo "No changes"
           git push
+
+        - name: Run Backtest
+          run: python src/backtest.py
