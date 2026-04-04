@@ -131,3 +131,13 @@ if df_signals.empty:
 
 df_signals.to_csv("data/signals.csv", index=False)
 print("signals.csv updated")
+if len(signals_data) == 0:
+    send_alert("📊 No trading signals today")
+
+else:
+    msg = "📊 Trading Signals Today:\n\n"
+    
+    for s in signals_data:
+        msg += f"{s['Signal']} → {s['Stock']} @ {s['Price']} (Conf: {s['Confidence']}%)\n"
+    
+    send_alert(msg)
