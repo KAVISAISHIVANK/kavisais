@@ -4,8 +4,17 @@ from datetime import datetime
 initial_capital = 500000
 max_positions = 5
 
-signals = pd.read_csv("data/signals.csv")
+try:
+    signals = pd.read_csv("data/signals.csv")
 
+    # Handle empty file (no rows)
+    if signals.empty:
+        print("No signals today")
+        exit()
+
+except Exception as e:
+    print("No valid signals file:", e)
+    exit()
 # Load or create portfolio
 try:
     portfolio = pd.read_csv("data/portfolio.csv")
