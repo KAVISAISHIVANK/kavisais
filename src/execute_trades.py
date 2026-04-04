@@ -4,17 +4,17 @@ from datetime import datetime
 initial_capital = 500000
 max_positions = 5
 
-signals = pd.read_csv("signals.csv")
+signals = pd.read_csv("data/signals.csv")
 
 # Load or create portfolio
 try:
-    portfolio = pd.read_csv("portfolio.csv")
+    portfolio = pd.read_csv("data/portfolio.csv")
 except:
     portfolio = pd.DataFrame(columns=["Stock","Buy Price","Quantity","Buy Date"])
 
 # Load or create trades
 try:
-    trades = pd.read_csv("trades.csv")
+    trades = pd.read_csv("data/trades.csv")
 except:
     trades = pd.DataFrame(columns=["Stock","Buy Price","Sell Price","Quantity","Buy Date","Sell Date","PnL","PnL %"])
 
@@ -76,7 +76,7 @@ for _, row in signals.iterrows():
             print(f"EXIT: {stock} | PnL: {pnl:.2f}")
 
 # Save files
-new_portfolio.to_csv("portfolio.csv", index=False)
-new_trades.to_csv("trades.csv", index=False)
+new_portfolio.to_csv("data/portfolio.csv", index=False)
+new_trades.to_csv("dta/trades.csv", index=False)
 
 print("Portfolio & Trades updated")
