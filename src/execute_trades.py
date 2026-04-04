@@ -89,3 +89,28 @@ new_portfolio.to_csv("data/portfolio.csv", index=False)
 new_trades.to_csv("dta/trades.csv", index=False)
 
 print("Portfolio & Trades updated")
+import os
+import requests
+
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+def send_alert(msg):
+    if TOKEN and CHAT_ID:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+
+try:
+    portfolio = pd.read_csv("data/portfolio.csv")
+
+    if portfolio.empty:
+        send_alert("💼 Portfolio is empty")
+    else:
+        msg = "💼 Current Portfolio:\n\n"
+        for _, row in portfolio.iterrows():
+            msg += f"{row['Stock']} | Buy: {row['Buy Price']} | Qty: {row['Quantity']}\n"
+
+        send_alert(msg)
+
+except:
+    pass
