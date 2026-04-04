@@ -167,3 +167,5 @@ daily_capital_df.to_csv(os.path.join(OUTPUT_DIR, 'nifty50_equity_curve.csv'))
 print("Backtest complete. Results saved in 'data/' folder:")
 print(" - nifty50_trade_log.csv")
 print(" - nifty50_equity_curve.csv")
+# Save trade log as expected by the pipeline
+trade_log_df.to_csv(os.path.join(OUTPUT_DIR, 'backtest_results.csv'), index=False)
