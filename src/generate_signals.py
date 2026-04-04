@@ -11,7 +11,7 @@ import os
 # =========================
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
+send_alert("✅ System is running")
 def send_alert(msg):
     if TOKEN is None or CHAT_ID is None:
         print("Telegram not configured")
