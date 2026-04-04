@@ -119,16 +119,16 @@ for stock in stocks:
 # =========================
 # SAVE SIGNALS
 # =========================
+import os
+os.makedirs("data", exist_ok=True)
+
 df_signals = pd.DataFrame(signals_data)
 
 if df_signals.empty:
     print("No signals generated")
-else:
-    df_signals = df_signals.sort_values(by="Confidence", ascending=False)
 
-    # Ensure folder exists
-    import os
-    os.makedirs("data", exist_ok=True)
+    # ✅ Create empty file with columns (VERY IMPORTANT)
+    df_signals = pd.DataFrame(columns=["Date","Stock","Signal","Price","Confidence"])
 
-    df_signals.to_csv("data/signals.csv", index=False)
-    print("signals.csv updated")
+df_signals.to_csv("data/signals.csv", index=False)
+print("signals.csv updated")
