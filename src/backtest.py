@@ -36,7 +36,7 @@ NIFTY50_TICKERS = [
 # --- Load stock data ---
 all_stock_data = {}
 for ticker in NIFTY50_TICKERS:
-    file_path = os.path.join(STOCKS_DIR, f"{ticker}.CSV")
+    file_path = os.path.join(STOCKS_DIR, f"{ticker}.csv")
     if not os.path.exists(file_path):
         continue
     try:
