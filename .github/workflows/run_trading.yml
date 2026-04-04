@@ -1,55 +1,46 @@
-name: Run Trading System
+name: Nifty50 Swing Trading System
 
+# Triggers
 on:
+  workflow_dispatch:       # ✅ allows manual run
   schedule:
-    - cron: "0 10 * * 1-5"   # 3:30 PM IST
-  workflow_dispatch:
+    - cron: '0 5 * * 1-5'  # Daily Mon-Fri at 5AM IST
 
 jobs:
-  run-script:
+  run-trading-system:
     runs-on: ubuntu-latest
 
-    # ✅ ADD SECRETS HERE
-    env:
-      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
     steps:
+      # 1️⃣ Checkout repo
       - name: Checkout repo
         uses: actions/checkout@v3
 
+      # 2️⃣ Setup Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: 3.10
 
+      # 3️⃣ Install dependencies
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install pandas yfinance ta requests openpyxl
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      # ✅ DEBUG STEP (VERY IMPORTANT)
-      - name: Debug Telegram Variables
+      # 4️⃣ Set Telegram secrets
+      - name: Set Telegram Secrets
         run: |
-          echo "TOKEN=$TELEGRAM_TOKEN"
-          echo "CHAT_ID=$TELEGRAM_CHAT_ID"
+          echo "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" >> $GITHUB_ENV
+          echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> $GITHUB_ENV
 
-      - name: Run signal generation
+      # 5️⃣ Run generate_signals.py
+      - name: Generate Signals
         run: python src/generate_signals.py
 
-      - name: Run trade execution
+      # 6️⃣ Run execute_trades.py
+      - name: Execute Trades
         run: python src/execute_trades.py
 
-      - name: Create dashboard
-        run: python src/create_dashboard.py
-
-      - name: Commit updated files
-        run: |
-          git config --global user.name "bot"
-          git config --global user.email "bot@example.com"
-          git add data/*.csv output/*.xlsx
-          git commit -m "Auto update trading data" || echo "No changes"
-          git push
-
-        - name: Run Backtest
-          run: python src/backtest.py
+      # 7️⃣ Run backtest.py
+      - name: Run Backtest
+        run: python src/backtest.py
