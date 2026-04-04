@@ -1,47 +1,48 @@
-# src/backtest.py
-import yfinance as yf
+# src/backtest_local.py
+
 import pandas as pd
 import os
-from datetime import datetime
 
 # -------------------------
 # CONFIG
 # -------------------------
-START_DATE = "2016-01-01"
-END_DATE = "2026-01-01"
-INITIAL_CAPITAL = 1000000  # 10L
-POSITION_SIZE = 0.10  # 10% per trade
+INITIAL_CAPITAL = 1000000   # Starting capital in INR
+POSITION_SIZE = 0.10        # 10% of capital per trade
+DATA_DIR = "stocks"         # Folder with CSVs
+RESULTS_DIR = "data"        # Folder to save backtest results
+os.makedirs(RESULTS_DIR, exist_ok=True)
+CSV_FILE = os.path.join(RESULTS_DIR, "backtest_results.csv")
 
-DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True)
-CSV_FILE = os.path.join(DATA_DIR, "backtest_results.csv")
-
-# Nifty 50 list (2026 snapshot, remove delisted if needed)
-NIFTY50 = [
-    "ADANIENT.NS","ASIANPAINT.NS","AXISBANK.NS","BAJAJ-AUTO.NS","BAJFINANCE.NS",
-    "BAJAJFINSV.NS","BPCL.NS","BHARTIARTL.NS","BRITANNIA.NS","CIPLA.NS",
-    "COALINDIA.NS","DIVISLAB.NS","DRREDDY.NS","EICHERMOT.NS","GRASIM.NS",
-    "HCLTECH.NS","HDFCBANK.NS","HDFC.NS","HEROMOTOCO.NS","HINDALCO.NS",
-    "HINDUNILVR.NS","ICICIBANK.NS","INDUSINDBK.NS","INFY.NS","ITC.NS",
-    "JSWSTEEL.NS","KOTAKBANK.NS","LT.NS","M&M.NS","MARUTI.NS",
-    "NESTLEIND.NS","NTPC.NS","ONGC.NS","POWERGRID.NS","RELIANCE.NS",
-    "SBILIFE.NS","SHREECEM.NS","SBIN.NS","SUNPHARMA.NS","TCS.NS",
-    "TATACONSUM.NS","TATAMOTORS.NS","TATASTEEL.NS","TECHM.NS","TITAN.NS",
-    "ULTRACEMCO.NS","UPL.NS","WIPRO.NS"
+# -------------------------
+# Official Nifty 50 Stocks
+# -------------------------
+NIFTY_50 = [
+    "ADANIENT","ASIANPAINT","AXISBANK","BAJAJ-AUTO","BAJFINANCE",
+    "BAJAJFINSV","BPCL","BHARTIARTL","BRITANNIA","CIPLA",
+    "COALINDIA","DIVISLAB","DRREDDY","EICHERMOT","GRASIM",
+    "HCLTECH","HDFCBANK","HDFC","HEROMOTOCO","HINDALCO",
+    "HINDUNILVR","ICICIBANK","ITC","INDUSINDBK","INFY",
+    "JSWSTEEL","KOTAKBANK","LT","M&M","MARUTI",
+    "NESTLEIND","NTPC","ONGC","POWERGRID","RELIANCE",
+    "SBILIFE","SBIN","SHREECEM","TATACONSUM","TATAMOTORS",
+    "TATASTEEL","TECHM","TITAN","ULTRACEMCO","UPL",
+    "WIPRO","TCS","HDFCLIFE"
 ]
 
 # -------------------------
-# Helper functions
+# Helper function: simulate trades
 # -------------------------
 def simulate_trades(df):
-    """
-    Generates BUY/EXIT signals using 20DMA and 50DMA strategy,
-    returns a DataFrame of trades with PnL
-    """
     df = df.copy()
+    
+    # Convert 'Price' to datetime (MM/DD/YYYY format)
+    df['Price'] = pd.to_datetime(df['Price'], format="%m/%d/%Y")
+    df.set_index('Price', inplace=True)
+
+    # Compute moving averages
     df['20DMA'] = df['Close'].rolling(20).mean()
     df['50DMA'] = df['Close'].rolling(50).mean()
-    df = df.dropna(subset=['20DMA','50DMA'])  # avoid NaN issues
+    df = df.dropna(subset=['20DMA','50DMA'])
 
     trades = []
     holding = False
@@ -51,8 +52,8 @@ def simulate_trades(df):
         row = df.iloc[i]
         prev = df.iloc[i-1]
 
-        # BUY signal: close > 50DMA and close near 20DMA, momentum check
-        if not holding and row['Close'] > row['50DMA'] and abs(row['Close'] - row['20DMA'])/row['20DMA'] < 0.02 and row['High'] > prev['High']:
+        # Simple BUY condition
+        if not holding and row['Close'] > row['50DMA'] and abs(row['Close'] - row['20DMA'])/row['20DMA'] < 0.02:
             holding = True
             entry_price = row['Close']
             trades.append({
@@ -61,7 +62,7 @@ def simulate_trades(df):
                 "Price": entry_price
             })
 
-        # EXIT signal: close < 20DMA
+        # Simple EXIT condition
         elif holding and row['Close'] < row['20DMA']:
             holding = False
             exit_price = row['Close']
@@ -80,19 +81,32 @@ def simulate_trades(df):
 capital = INITIAL_CAPITAL
 df_all_trades = pd.DataFrame()
 
-for stock in NIFTY50:
+for file in os.listdir(DATA_DIR):
+    if not file.endswith(".csv"):
+        continue
+
+    stock = file.replace(".csv","").upper()
+
+    # Only process if in Nifty 50
+    if stock not in NIFTY_50:
+        print(f"{stock}: Skipped (not Nifty 50)")
+        continue
+
+    path = os.path.join(DATA_DIR, file)
+
     try:
-        print(f"Processing {stock}...")
-        df = yf.download(stock, start=START_DATE, end=END_DATE, interval="1d", progress=False)
-        if df.empty or len(df) < 50:
-            print(f"Skipping {stock}, insufficient data")
+        # Skip row 2 & 3, row 1 is header
+        df = pd.read_csv(path, skiprows=[1,2])
+        if 'Price' not in df.columns or 'Close' not in df.columns:
+            print(f"{stock}: Missing columns, skipping")
             continue
 
         trades = simulate_trades(df)
         if trades.empty:
+            print(f"{stock}: No trades generated")
             continue
 
-        # Calculate position sizing
+        # Position sizing
         trades['Qty'] = (capital * POSITION_SIZE / trades['Price']).apply(lambda x: int(x))
         trades['Stock'] = stock
 
@@ -103,10 +117,10 @@ for stock in NIFTY50:
             capital += pnl
 
         df_all_trades = pd.concat([df_all_trades, trades], ignore_index=True)
+        print(f"{stock}: trades generated {len(trades)}")
 
     except Exception as e:
         print(f"Error processing {stock}: {e}")
-        continue
 
 # -------------------------
 # CALCULATE METRICS
@@ -116,7 +130,7 @@ if not df_all_trades.empty:
     total_trades = len(exit_trades)
     wins = len(exit_trades[exit_trades["PnL"]>0])
     win_rate = round(wins/total_trades*100,2) if total_trades>0 else 0
-    cagr = round(((capital/INITIAL_CAPITAL)**(1/10) -1)*100,2)  # 10 years
+    cagr = round(((capital/INITIAL_CAPITAL)**(1/10) -1)*100,2)  # 10-year CAGR
 else:
     total_trades = 0
     win_rate = 0
