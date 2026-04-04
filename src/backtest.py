@@ -1,104 +1,100 @@
-import yfinance as yf
+import os
 import pandas as pd
-from ta.momentum import RSIIndicator
-from ta.trend import MACD
+from datetime import datetime
+import requests
 
-stocks = [
-    "RELIANCE.NS","ICICIBANK.NS","HDFCBANK.NS","INFY.NS","TCS.NS"
-]
+# =========================
+# Telegram alert function
+# =========================
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-initial_capital = 500000
+def send_alert(msg):
+    if TOKEN and CHAT_ID:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+
+# =========================
+# Load signals
+# =========================
+signals_file = "data/signals.csv"  # adjust if needed
+try:
+    df_signals = pd.read_csv(signals_file)
+except Exception as e:
+    send_alert(f"⚠️ Backtest Error: signals.csv not found or empty.\n{e}")
+    exit()
+
+if df_signals.empty:
+    send_alert("⚠️ Backtest: No signals to process.")
+    exit()
+
+# =========================
+# Parameters
+# =========================
+initial_capital = 1000000  # ₹1,000,000
 capital = initial_capital
-
+max_per_trade = 0.1  # 10% of capital per trade
 trades = []
 
-for stock in stocks:
-    print(f"Backtesting {stock}")
+# =========================
+# Backtest loop
+# =========================
+for idx, row in df_signals.iterrows():
+    stock = row['Stock']
+    price = row['Price']
+    signal = row['Signal']
 
-    df = yf.download(stock, period="2y", interval="1d", progress=False)
+    # Determine position size
+    allocation = capital * max_per_trade
+    qty = allocation / price
 
-    if df.empty:
-        continue
-
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-
-    if "Close" not in df.columns or len(df) < 50:
-        continue
-
-    # Fix Close
-    close = df["Close"]
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
-    close = close.astype(float)
-
-    # Indicators
-    df["RSI"] = RSIIndicator(close).rsi()
-    macd = MACD(close)
-    df["MACD"] = macd.macd()
-    df["MACD_signal"] = macd.macd_signal()
-
-    position = None
-
-    for i in range(50, len(df)):
-        row = df.iloc[i]
-
-        price = float(close.iloc[i])
-
-        # BUY
-        if position is None:
-            if row["RSI"] < 35 and row["MACD"] > row["MACD_signal"]:
-                qty = int((capital * 0.1) / price)
-
-                if qty > 0:
-                    position = {
-                        "buy_price": price,
-                        "qty": qty
-                    }
-
-        # EXIT
-        elif position is not None:
-            buy_price = position["buy_price"]
-
-            change_pct = (price - buy_price) / buy_price * 100
-
-            if (
-                row["RSI"] > 65 and row["MACD"] < row["MACD_signal"]
-                or change_pct >= 12
-                or change_pct <= -5
-            ):
-                pnl = (price - buy_price) * position["qty"]
-                capital += pnl
-
+    if signal == "BUY":
+        capital -= allocation
+        trades.append({
+            "Date": row['Date'],
+            "Stock": stock,
+            "Signal": signal,
+            "Price": price,
+            "Qty": round(qty, 2),
+            "Capital Left": round(capital, 2)
+        })
+    elif signal == "EXIT":
+        # simulate exit: assume sold at signal price
+        # find matching buy
+        for t in trades:
+            if t["Stock"] == stock and t["Signal"] == "BUY":
+                pnl = (price - t["Price"]) * t["Qty"]
+                capital += t["Qty"] * price
+                t["Exit_Price"] = price
+                t["PnL"] = round(pnl, 2)
                 trades.append({
+                    "Date": row['Date'],
                     "Stock": stock,
-                    "Buy": buy_price,
-                    "Sell": price,
-                    "PnL": pnl,
-                    "Return %": change_pct
+                    "Signal": signal,
+                    "Price": price,
+                    "Qty": t["Qty"],
+                    "Capital Left": round(capital, 2),
+                    "PnL": round(pnl, 2)
                 })
-
-                position = None
+                break
 
 # =========================
-# RESULTS
+# Results summary
 # =========================
+df_trades = pd.DataFrame(trades)
+wins = df_trades[df_trades.get('PnL', 0) > 0].shape[0]
+total_trades = df_trades[df_trades['Signal'] == "EXIT"].shape[0]
+win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
 
-trades_df = pd.DataFrame(trades)
+# Send Telegram message
+msg = f"📊 Backtest Completed ({datetime.now().strftime('%Y-%m-%d')}):\n" \
+      f"Initial Capital: ₹{initial_capital:.2f}\n" \
+      f"Final Capital: ₹{capital:.2f}\n" \
+      f"Total Trades: {total_trades}\n" \
+      f"Win Rate: {win_rate:.2f}%"
+send_alert(msg)
 
-if trades_df.empty:
-    print("No trades in backtest")
-else:
-    total_trades = len(trades_df)
-    wins = len(trades_df[trades_df["PnL"] > 0])
-    win_rate = (wins / total_trades) * 100
-
-    total_pnl = trades_df["PnL"].sum()
-
-    print("\n===== BACKTEST RESULTS =====")
-    print(f"Total Trades: {total_trades}")
-    print(f"Win Rate: {win_rate:.2f}%")
-    print(f"Total PnL: ₹{total_pnl:.2f}")
-    print(f"Final Capital: ₹{capital:.2f}")
-
-    trades_df.to_csv("data/backtest_results.csv", index=False)
+# =========================
+# Save detailed CSV
+# =========================
+df_trades.to_csv("data/backtest_results.csv", index=False)
