@@ -142,21 +142,22 @@ for stock, pos in positions.items():
 # SAVE CSV
 # ------------------------------
 df_trades = pd.DataFrame(trades)
-if not df_trades.empty:
-    df_trades.to_csv(CSV_FILE, index=False)
-    print(f"Backtest results saved to {CSV_FILE}")
-
-    # Metrics
-    exit_trades = df_trades[df_trades["Signal"]=="EXIT"]
-    total_trades = len(exit_trades)
-    wins = len(exit_trades[exit_trades["PnL"]>0])
-    win_rate = round(wins/total_trades*100,2) if total_trades>0 else 0
-    cagr = round(((capital/INITIAL_CAPITAL)**(1/10) -1)*100,2)
-
-    print(f"Initial Capital: ₹{INITIAL_CAPITAL}")
-    print(f"Final Capital: ₹{capital:.2f}")
-    print(f"Total Trades: {total_trades}")
-    print(f"Win Rate: {win_rate}%")
-    print(f"CAGR: {cagr}%")
-else:
-    print("No trades were executed in this backtest.")
+#if not df_trades.empty:
+#    df_trades.to_csv(CSV_FILE, index=False)
+#    print(f"Backtest results saved to {CSV_FILE}")
+    # Save CSV even if empty
+df_trades.to_csv(CSV_FILE, index=False)
+print(f"Backtest results saved to {CSV_FILE}")
+# Metrics
+exit_trades = df_trades[df_trades["Signal"]=="EXIT"]
+total_trades = len(exit_trades)
+wins = len(exit_trades[exit_trades["PnL"]>0])
+win_rate = round(wins/total_trades*100,2) if total_trades>0 else 0
+cagr = round(((capital/INITIAL_CAPITAL)**(1/10) -1)*100,2)
+print(f"Initial Capital: ₹{INITIAL_CAPITAL}")
+print(f"Final Capital: ₹{capital:.2f}")
+print(f"Total Trades: {total_trades}")
+print(f"Win Rate: {win_rate}%")
+print(f"CAGR: {cagr}%")
+#else:
+#    print("No trades were executed in this backtest.")
