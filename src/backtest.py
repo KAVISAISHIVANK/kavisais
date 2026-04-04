@@ -1,136 +1,169 @@
-import os
 import pandas as pd
+import numpy as np
+import os
 
-# =========================
-# PARAMETERS
-# =========================
-STOCK_DIR = 'stocks'           # folder where CSVs are stored
-MOMENTUM_LOOKBACK_DAYS = 5     # number of days for momentum
-INITIAL_CAPITAL = 500000       # starting capital (₹5L)
-MAX_STOCKS = 5                 # max positions at a time
+# --- CONFIG ---
+STOCKS_DIR = 'stocks'
+OUTPUT_DIR = 'data'
+START_DATE = '2000-01-01'
+END_DATE = '2025-01-01'
+INITIAL_CAPITAL = 1_000_000
+MAX_HOLDINGS = 10
+MOMENTUM_LOOKBACK_DAYS = 20
+PROFIT_TARGET_PERCENT = 0.07   # 7% profit
+STOP_LOSS_PERCENT = 0.05       # 5% loss
+BROKERAGE_PER_TRADE = 20.0
+STT_BUY = 0.001
+STT_SELL = 0.001
 
-# =========================
-# HELPER FUNCTION TO LOAD CSV
-# =========================
-def load_stock_csv(file_path):
-    """
-    Load stock CSV with multi-header format:
-    Row1: Column names (Price, Close, High, Low, Open, Volume)
-    Row2: Ticker (ignore)
-    Row3: extra (ignore)
-    Data starts from row 4
-    """
-    df = pd.read_csv(
-        file_path,
-        skiprows=[1, 2],  # skip Ticker row and extra
-        index_col=0,       # 'Price' column = date
-        parse_dates=True
-    )
+# Ensure output directory exists
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # keep only required columns
-    df = df.rename(columns=lambda x: x.strip())
-    df = df[['Close', 'High', 'Low', 'Open', 'Volume']]
+# --- NIFTY50 tickers ---
+NIFTY50_TICKERS = [
+    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
+    "BHARTIARTL.NS", "ITC.NS", "LT.NS", "SBIN.NS", "HINDUNILVR.NS",
+    "BAJFINANCE.NS", "KOTAKBANK.NS", "AXISBANK.NS", "MARUTI.NS", "SUNPHARMA.NS",
+    "NESTLEIND.NS", "ASIANPAINT.NS", "ULTRACEMCO.NS", "TITAN.NS", "M&M.NS",
+    "TECHM.NS", "INDUSINDBK.NS", "NTPC.NS", "TATAMOTORS.NS", "JSWSTEEL.NS",
+    "GRASIM.NS", "ADANIENT.NS", "POWERGRID.NS", "ONGC.NS", "CIPLA.NS",
+    "DRREDDY.NS", "HDFC.NS", "WIPRO.NS", "COALINDIA.NS", "BPCL.NS",
+    "GAIL.NS", "HEROMOTOCO.NS", "SHREECEM.NS", "UPL.NS", "DIVISLAB.NS",
+    "APOLLOHOSP.NS", "EICHERMOT.NS", "DMART.NS", "LTIM.NS", "SIEMENS.NS",
+    "PIDILITIND.NS", "HDFCLIFE.NS", "SBILIFE.NS", "GODREJCP.NS", "DABUR.NS"
+]
 
-    # Add PriceToUse for backtest (use Close)
-    df['PriceToUse'] = df['Close']
+# --- Load stock data ---
+all_stock_data = {}
+for ticker in NIFTY50_TICKERS:
+    file_path = os.path.join(STOCKS_DIR, f"{ticker}.CSV")
+    if not os.path.exists(file_path):
+        continue
+    try:
+        df = pd.read_csv(file_path, skiprows=[1,2])
+        df['Price'] = pd.to_datetime(df['Price'])
+        df.set_index('Price', inplace=True)
+        df.sort_index(inplace=True)
+        df['PriceToUse'] = df['Close']
+        df['Momentum'] = df['PriceToUse'].pct_change(periods=MOMENTUM_LOOKBACK_DAYS)
+        all_stock_data[ticker] = df
+    except Exception as e:
+        print(f"Error loading {ticker}: {e}")
 
-    # Drop any NaNs
-    df.dropna(subset=['PriceToUse'], inplace=True)
+if not all_stock_data:
+    raise ValueError("No stock data loaded. Check CSV files in 'stocks/'.")
 
-    # Sort by date
-    df = df.sort_index()
+# --- Backtest Initialization ---
+portfolio = {'capital': INITIAL_CAPITAL, 'holdings': {}}
+trade_log = []
+daily_capital_history = []
 
-    # Momentum
-    df['Momentum'] = df['PriceToUse'].pct_change(periods=MOMENTUM_LOOKBACK_DAYS)
-    
-    return df
+# --- Trading Dates ---
+min_date = max(df.index.min() for df in all_stock_data.values())
+max_date = min(df.index.max() for df in all_stock_data.values())
+trading_dates = pd.date_range(start=max(min_date, pd.to_datetime(START_DATE)),
+                              end=min(max_date, pd.to_datetime(END_DATE)),
+                              freq='B')
 
-# =========================
-# BACKTEST LOGIC
-# =========================
-def backtest_nifty50():
-    capital = INITIAL_CAPITAL
-    positions = {}   # current positions {ticker: {'qty': int, 'entry_price': float}}
-    history = []     # store trades for review
+def get_day_data(df_stock, date):
+    if date in df_stock.index:
+        return df_stock.loc[date]
+    idx = df_stock.index.searchsorted(date)
+    if idx < len(df_stock.index):
+        next_date = df_stock.index[idx]
+        if (next_date - date).days <= 5:
+            return df_stock.loc[next_date]
+    return None
 
-    # load all CSV files
-    stock_files = [f for f in os.listdir(STOCK_DIR) if f.endswith('.CSV')]
+# --- Backtest Loop ---
+for current_date in trading_dates:
+    # Daily portfolio value
+    daily_value = portfolio['capital']
+    for t, h in portfolio['holdings'].items():
+        df_t = all_stock_data[t]
+        day_data = get_day_data(df_t, current_date)
+        if day_data is not None:
+            daily_value += h['qty'] * day_data['PriceToUse']
+    daily_capital_history.append({'date': current_date, 'capital': daily_value})
 
-    for file in stock_files:
-        ticker = file.replace('.CSV','')
-        file_path = os.path.join(STOCK_DIR, file)
-        try:
-            df = load_stock_csv(file_path)
-        except Exception as e:
-            print(f"Error processing {ticker}: {e}")
-            continue
+    # Check existing holdings for Profit/Loss
+    for t, h in list(portfolio['holdings'].items()):
+        df_t = all_stock_data[t]
+        day_data = get_day_data(df_t, current_date)
+        if day_data is None: continue
+        price = day_data['PriceToUse']
+        buy_price = h['buy_price']
+        sell_reason = None
+        if price >= buy_price * (1+PROFIT_TARGET_PERCENT):
+            sell_reason = 'PROFIT'
+        elif price <= buy_price * (1-STOP_LOSS_PERCENT):
+            sell_reason = 'LOSS'
+        if sell_reason:
+            qty = h['qty']
+            gross = qty*price
+            total_costs = BROKERAGE_PER_TRADE + gross*STT_SELL
+            net = gross - total_costs
+            portfolio['capital'] += net
+            trade_log.append({'date': current_date, 'type': f'SELL_{sell_reason}', 'ticker': t,
+                              'qty': qty, 'buy_price': buy_price, 'sell_price': price,
+                              'capital_after_trade': portfolio['capital']})
+            del portfolio['holdings'][t]
 
-        for date, row in df.iterrows():
-            price = row['PriceToUse']
+    # Weekly rebalance (Monday)
+    if current_date.weekday() == 0:
+        momentum_scores = []
+        for t, df_t in all_stock_data.items():
+            day_data = get_day_data(df_t, current_date)
+            if day_data is not None and pd.notna(day_data['Momentum']):
+                momentum_scores.append({'ticker': t, 'momentum': day_data['Momentum']})
+        momentum_scores.sort(key=lambda x: x['momentum'], reverse=True)
+        top_tickers = [x['ticker'] for x in momentum_scores[:MAX_HOLDINGS]]
 
-            # --- SELL LOGIC ---
-            if ticker in positions:
-                entry_price = positions[ticker]['entry_price']
-                target_price = entry_price * 1.12   # 12% profit target
-                stop_loss = entry_price * 0.95      # 5% stop loss
+        # Buy new positions if slots available
+        slots = MAX_HOLDINGS - len(portfolio['holdings'])
+        for t in top_tickers:
+            if slots <= 0: break
+            if t in portfolio['holdings']: continue
+            df_t = all_stock_data[t]
+            day_data = get_day_data(df_t, current_date)
+            if day_data is None: continue
+            price = day_data['PriceToUse']
+            allocation = portfolio['capital'] / slots
+            qty = int(allocation / price)
+            if qty == 0: continue
+            gross = qty*price
+            total_costs = BROKERAGE_PER_TRADE + gross*STT_BUY
+            net = gross + total_costs
+            if portfolio['capital'] >= net:
+                portfolio['capital'] -= net
+                portfolio['holdings'][t] = {'qty': qty, 'buy_price': price}
+                trade_log.append({'date': current_date, 'type':'BUY', 'ticker': t,
+                                  'qty': qty, 'buy_price': price,
+                                  'capital_after_trade': portfolio['capital']})
+                slots -= 1
 
-                if price >= target_price or price <= stop_loss:
-                    qty = positions[ticker]['qty']
-                    pnl = (price - entry_price) * qty
-                    capital += price * qty
-                    history.append({
-                        'Date': date,
-                        'Ticker': ticker,
-                        'Action': 'SELL',
-                        'Price': price,
-                        'Qty': qty,
-                        'P&L': pnl,
-                        'Capital': capital
-                    })
-                    del positions[ticker]
+# --- Final liquidation ---
+for t, h in portfolio['holdings'].items():
+    df_t = all_stock_data[t]
+    last_day = df_t.index.max()
+    price = df_t.loc[last_day]['PriceToUse']
+    qty = h['qty']
+    gross = qty*price
+    total_costs = BROKERAGE_PER_TRADE + gross*STT_SELL
+    net = gross - total_costs
+    portfolio['capital'] += net
+    trade_log.append({'date': last_day, 'type':'FINAL_SELL', 'ticker': t,
+                      'qty': qty, 'buy_price': h['buy_price'], 'sell_price': price,
+                      'capital_after_trade': portfolio['capital']})
 
-            # --- BUY LOGIC ---
-            if len(positions) < MAX_STOCKS:
-                # simple momentum entry: positive MOMENTUM
-                if row['Momentum'] > 0:
-                    alloc_per_stock = capital / (MAX_STOCKS - len(positions))
-                    qty_to_buy = int(alloc_per_stock / price)
-                    if qty_to_buy > 0:
-                        positions[ticker] = {'qty': qty_to_buy, 'entry_price': price}
-                        capital -= price * qty_to_buy
-                        history.append({
-                            'Date': date,
-                            'Ticker': ticker,
-                            'Action': 'BUY',
-                            'Price': price,
-                            'Qty': qty_to_buy,
-                            'P&L': 0,
-                            'Capital': capital
-                        })
+# --- Save results ---
+trade_log_df = pd.DataFrame(trade_log)
+trade_log_df.to_csv(os.path.join(OUTPUT_DIR, 'nifty50_trade_log.csv'), index=False)
 
-    # --- FINAL POSITIONS VALUE ---
-    for ticker, pos in positions.items():
-        df = load_stock_csv(os.path.join(STOCK_DIR, ticker + '.CSV'))
-        last_price = df['PriceToUse'][-1]
-        capital += last_price * pos['qty']
-        history.append({
-            'Date': df.index[-1],
-            'Ticker': ticker,
-            'Action': 'FINAL SELL',
-            'Price': last_price,
-            'Qty': pos['qty'],
-            'P&L': (last_price - pos['entry_price']) * pos['qty'],
-            'Capital': capital
-        })
+daily_capital_df = pd.DataFrame(daily_capital_history)
+daily_capital_df.set_index('date', inplace=True)
+daily_capital_df.to_csv(os.path.join(OUTPUT_DIR, 'nifty50_equity_curve.csv'))
 
-    # --- OUTPUT RESULTS ---
-    result_df = pd.DataFrame(history)
-    result_df.to_csv('nifty50_backtest_history.csv', index=False)
-    print(f"Backtest completed. Final capital: ₹{capital:,.2f}")
-    print("Trade history saved to nifty50_backtest_history.csv")
-
-# =========================
-# RUN BACKTEST
-# =========================
-if __name__ == "__main__":
-    backtest_nifty50()
+print("Backtest complete. Results saved in 'data/' folder:")
+print(" - nifty50_trade_log.csv")
+print(" - nifty50_equity_curve.csv")
