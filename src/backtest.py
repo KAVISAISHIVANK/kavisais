@@ -14,7 +14,6 @@ POSITION_SIZE = 0.10  # 10% of capital
 DATA_DIR = "data"
 CSV_FILE = os.path.join(DATA_DIR, "backtest_results.csv")
 
-# Ensure data folder exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ------------------------------
@@ -22,15 +21,15 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # ------------------------------
 NIFTY50 = [
     "ADANIENT.NS","ASIANPAINT.NS","AXISBANK.NS","BAJAJ-AUTO.NS","BAJFINANCE.NS",
-    "BAJAJFINSV.NS","BPCL.NS","BHARTIARTL.NS","INFRATEL.NS","BRITANNIA.NS",
-    "CIPLA.NS","COALINDIA.NS","DIVISLAB.NS","DRREDDY.NS","EICHERMOT.NS",
-    "GRASIM.NS","HCLTECH.NS","HDFCBANK.NS","HDFC.NS","HEROMOTOCO.NS",
-    "HINDALCO.NS","HINDUNILVR.NS","ICICIBANK.NS","ITC.NS","INDUSINDBK.NS",
-    "INFY.NS","JSWSTEEL.NS","KOTAKBANK.NS","LT.NS","M&M.NS",
-    "MARUTI.NS","NESTLEIND.NS","NTPC.NS","ONGC.NS","POWERGRID.NS",
-    "RELIANCE.NS","SBILIFE.NS","SBIN.NS","SUNPHARMA.NS","TCS.NS",
-    "TATACONSUM.NS","TATAMOTORS.NS","TATASTEEL.NS","TECHM.NS","ULTRACEMCO.NS",
-    "UPL.NS","WIPRO.NS","HINDPETRO.NS","SHREECEM.NS","HDFCLIFE.NS"
+    "BAJAJFINSV.NS","BPCL.NS","BHARTIARTL.NS","BRITANNIA.NS","CIPLA.NS",
+    "COALINDIA.NS","DIVISLAB.NS","DRREDDY.NS","EICHERMOT.NS","GRASIM.NS",
+    "HCLTECH.NS","HDFCBANK.NS","HDFC.NS","HEROMOTOCO.NS","HINDALCO.NS",
+    "HINDUNILVR.NS","ICICIBANK.NS","ITC.NS","INDUSINDBK.NS","INFY.NS",
+    "JSWSTEEL.NS","KOTAKBANK.NS","LT.NS","M&M.NS","MARUTI.NS",
+    "NESTLEIND.NS","NTPC.NS","ONGC.NS","POWERGRID.NS","RELIANCE.NS",
+    "SBILIFE.NS","SBIN.NS","SUNPHARMA.NS","TCS.NS","TATACONSUM.NS",
+    "TATASTEEL.NS","TECHM.NS","ULTRACEMCO.NS","UPL.NS","WIPRO.NS",
+    "HINDPETRO.NS","SHREECEM.NS","HDFCLIFE.NS"
 ]
 
 # ------------------------------
@@ -50,7 +49,7 @@ def generate_signals(df):
 
     signals = []
 
-    for i in range(1, len(df)):
+    for i in range(20, len(df)):
         row = df.iloc[i]
         prev = df.iloc[i-1]
         signal = None
@@ -59,14 +58,13 @@ def generate_signals(df):
         if row["Close"] > row["50DMA"] and abs(row["Close"] - row["20DMA"])/row["20DMA"] < 0.02:
             if row["High"] > prev["High"]:
                 signal = "BUY"
-        
+
         # Exit Signal
         elif row["Close"] < row["20DMA"]:
             signal = "EXIT"
 
-        # Confidence
         if signal:
-            momentum = (row["Close"] / df["Close"].iloc[max(i-20,0)]) - 1
+            momentum = (row["Close"] / df["Close"].iloc[i-20]) - 1
             confidence = round(min(max(momentum * 100, 50), 90), 2)
             signals.append({
                 "Date": row.name.strftime("%Y-%m-%d"),
@@ -74,7 +72,6 @@ def generate_signals(df):
                 "Price": row["Close"],
                 "Confidence": confidence
             })
-
     return signals
 
 # ------------------------------
@@ -85,10 +82,13 @@ for stock in NIFTY50:
     try:
         df = yf.download(stock, start=START_DATE, end=END_DATE, interval="1d", progress=False)
         if df.empty or len(df) < 50:
+            print(f"Skipping {stock}, insufficient data")
             continue
 
         df.index = pd.to_datetime(df.index)
         signals = generate_signals(df)
+        if not signals:
+            continue
 
         for sig in signals:
             date = sig["Date"]
@@ -98,7 +98,7 @@ for stock in NIFTY50:
             if signal == "BUY":
                 if stock not in positions and len(positions) < MAX_POSITIONS:
                     allocation = capital * POSITION_SIZE
-                    qty = allocation // price
+                    qty = int(allocation // price)
                     if qty > 0:
                         positions[stock] = {"entry_price": price, "qty": qty, "date": date}
                         capital -= qty * price
@@ -124,34 +124,39 @@ for stock in NIFTY50:
         continue
 
 # ------------------------------
-# FINAL PORTFOLIO VALUE
+# CLOSE REMAINING POSITIONS
 # ------------------------------
 for stock, pos in positions.items():
-    last_price = df["Close"].iloc[-1]
-    qty = pos["qty"]
-    capital += qty * last_price
-    trades.append({
-        "Date": END_DATE, "Stock": stock, "Signal": "EXIT",
-        "Price": last_price, "Qty": qty, "Capital": capital, "PnL": (last_price - pos["entry_price"])*qty
-    })
+    try:
+        last_price = yf.download(stock, start=END_DATE, end=END_DATE, interval="1d", progress=False)["Close"].iloc[-1]
+        qty = pos["qty"]
+        capital += qty * last_price
+        trades.append({
+            "Date": END_DATE, "Stock": stock, "Signal": "EXIT",
+            "Price": last_price, "Qty": qty, "Capital": capital, "PnL": (last_price - pos["entry_price"])*qty
+        })
+    except:
+        continue
 
 # ------------------------------
-# CREATE BACKTEST CSV
+# SAVE CSV
 # ------------------------------
 df_trades = pd.DataFrame(trades)
-df_trades.to_csv(CSV_FILE, index=False)
-print(f"Backtest results saved to {CSV_FILE}")
+if not df_trades.empty:
+    df_trades.to_csv(CSV_FILE, index=False)
+    print(f"Backtest results saved to {CSV_FILE}")
 
-# ------------------------------
-# CALCULATE METRICS
-# ------------------------------
-total_trades = len(df_trades[df_trades["Signal"]=="EXIT"])
-wins = len(df_trades[(df_trades["Signal"]=="EXIT") & (df_trades["PnL"]>0)])
-win_rate = round(wins/total_trades*100,2) if total_trades>0 else 0
-cagr = round(((capital/INITIAL_CAPITAL)**(1/10) -1)*100,2)
+    # Metrics
+    exit_trades = df_trades[df_trades["Signal"]=="EXIT"]
+    total_trades = len(exit_trades)
+    wins = len(exit_trades[exit_trades["PnL"]>0])
+    win_rate = round(wins/total_trades*100,2) if total_trades>0 else 0
+    cagr = round(((capital/INITIAL_CAPITAL)**(1/10) -1)*100,2)
 
-print(f"Initial Capital: ₹{INITIAL_CAPITAL}")
-print(f"Final Capital: ₹{capital:.2f}")
-print(f"Total Trades: {total_trades}")
-print(f"Win Rate: {win_rate}%")
-print(f"CAGR: {cagr}%")
+    print(f"Initial Capital: ₹{INITIAL_CAPITAL}")
+    print(f"Final Capital: ₹{capital:.2f}")
+    print(f"Total Trades: {total_trades}")
+    print(f"Win Rate: {win_rate}%")
+    print(f"CAGR: {cagr}%")
+else:
+    print("No trades were executed in this backtest.")
